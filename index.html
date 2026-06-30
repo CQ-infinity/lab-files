@@ -1,0 +1,213 @@
+ <!DOCTYPE html>
+ <html lang="zh-CN">
+ <head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1.0">
+ <title>实验室文件共享站</title>
+ <style>
+ *{margin:0;padding:0;box-sizing:border-box}
+ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;background:#f0f2f5;color:#333}
+ .top-banner{background:linear-gradient(135deg,#0d47a1,#1565c0,#1976d2);color:#fff;padding:36px 20px;text-align:center}
+ .top-banner h1{font-size:1.8em;margin-bottom:6px}
+ .top-banner p{font-size:.9em;opacity:.85}
+ .container{max-width:1000px;margin:0 auto;padding:16px}
+ .search-box{margin-bottom:16px}
+ .search-box input{width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:8px;font-size:14px;outline:none}
+ .search-box input:focus{border-color:#1976d2;box-shadow:0 0 0 2px rgba(25,118,210,.15)}
+ .cat-title{font-size:1.1em;font-weight:600;color:#0d47a1;margin:20px 0 10px;padding-left:10px;border-left:3px solid #1976d2}
+ .file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+ .file-card{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:flex-start;gap:12px;transition:transform .15s}
+ .file-card:hover{transform:translateY(-1px);box-shadow:0 3px 8px rgba(0,0,0,.12)}
+ .file-icon{font-size:1.6em;flex-shrink:0;width:36px;text-align:center;margin-top:2px}
+ .file-info{flex:1;min-width:0}
+ .file-name{font-size:.9em;font-weight:500;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .file-desc{font-size:.78em;color:#888;margin-top:3px;line-height:1.4}
+ .file-tag{display:inline-block;font-size:.68em;padding:1px 7px;border-radius:4px;margin-top:5px;background:#e3f2fd;color:#1565c0}
+ .file-tag.thesis{background:#fce4ec;color:#c62828}
+ .file-tag.book{background:#e8f5e9;color:#2e7d32}
+ .file-tag.data{background:#fff3e0;color:#e65100}
+ .file-tag.archive{background:#f3e5f5;color:#6a1b9a}
+ .file-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+ .btn-dl{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;font-size:.78em;border:none;border-radius:6px;cursor:pointer;color:#fff;background:#1976d2;text-decoration:none;transition:background .15s}
+ .btn-dl:hover{background:#0d47a1}
+ .btn-link{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;font-size:.78em;border:1px solid #1976d2;border-radius:6px;cursor:pointer;color:#1976d2;background:#fff;text-decoration:none}
+ .btn-link:hover{background:#e3f2fd}
+ .link-tip{background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:12px 16px;margin:12px 0;font-size:.82em;color:#795548;line-height:1.6}
+ .link-tip strong{color:#e65100}
+ .no-result{text-align:center;padding:40px;color:#999;display:none}
+ .footer{text-align:center;padding:30px 20px;color:#999;font-size:.78em;line-height:1.6}
+ @media(max-width:600px){.top-banner h1{font-size:1.4em}.file-grid{grid-template-columns:1fr}}
+ </style>
+ </head>
+ <body>
+ 
+ <div class="top-banner">
+   <h1>📁 实验室文件共享站</h1>
+   <p>英才班导师科研资料 · 点击下载即可获取</p>
+ </div>
+ 
+ <div class="container">
+   <div class="search-box">
+     <input type="text" id="searchInput" placeholder="🔍 搜索文件名..." oninput="filterFiles()">
+   </div>
+ 
+   <!-- ======================== 使用说明 ======================== -->
+   <div class="link-tip">
+     <strong>📌 使用说明：</strong><br>
+     点击文件卡片上的 <strong>⬇ 下载</strong> 按钮即可下载对应文件。<br>
+     如需通过百度网盘下载，请将文件上传后复制分享链接，替换下方代码中的 <code>BAIDU_PAN_URL</code>。<br>
+     如需重新整理文件列表，修改下方 <code>files</code> 数组即可。
+   </div>
+ 
+   <!-- ======================== 文件列表容器 ======================== -->
+   <div id="fileList"></div>
+   <div class="no-result" id="noResult">没有找到匹配的文件</div>
+ </div>
+ 
+ <div class="footer">
+   实验室文件共享站 · 资料仅供内部学习交流使用<br>
+   文件更新时间：2026年7月
+ </div>
+ 
+ <script>
+ // ============================================================
+ // 🔧 配置区域 — 你只需要修改这里
+ // ============================================================
+ 
+ // 文件托管方式（二选一）:
+ // "github" — 文件和网页一起放在GitHub仓库，用相对路径下载
+ // "pan" — 文件存在百度网盘，填写分享链接
+ const STORAGE_MODE = "github";  // 改成 "pan" 可使用百度网盘
+ 
+ // 如果使用百度网盘，默认分享前缀（每个文件可单独覆盖）
+ const BAIDU_PREFIX = "https://pan.baidu.com/s/";  // 替换为你的分享链接前缀
+ const PAN_PWD = "1234";  // 百度网盘提取码
+ 
+ // GitHub仓库地址（部署后自动获取）
+ const REPO_URL = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, "/");
+ 
+ // ============================================================
+ // 📋 文件清单 — 格式：{图标, 文件名, 描述, 类别, 标签, 链接(可选)}
+ // ============================================================
+ const files = [
+   // ---- 学术论文 ----
+   { icon:"📄", name:"面向6G的空时频多维信道预测方法研究_张振.pdf", desc:"张振博士学位论文 — 空时频多维信道预测核心方法", cat:"学术论文", tag:"核心论文" },
+   { icon:"📄", name:"孙语瞳_面向6G的无线传播环境信息表示和信道预测方法研究.pdf", desc:"孙语瞳 — 环境信息表示与信道预测方法", cat:"学术论文", tag:"核心论文" },
+   { icon:"📄", name:"于博-环境信息辅助的6G信道建模与遮挡预测方法研究.pdf", desc:"于博 — 6G信道建模与遮挡预测", cat:"学术论文", tag:"实验室成果" },
+   { icon:"📄", name:"基于深度学习的MIMO信道预测方法研究_张施宇.pdf", desc:"张施宇 — 深度学习MIMO信道预测", cat:"学术论文", tag:"实验室成果" },
+   { icon:"📄", name:"Yutong Sun-Environment_Features-Based_Model_for_Path_Loss_Prediction.pdf", desc:"孙语瞳 — 环境特征辅助路径损耗预测模型", cat:"学术论文", tag:"SCI论文" },
+   { icon:"📄", name:"Yutong Sun-Environment_information-based_channel_prediction_method_assisted_by_graph_neural_network.pdf", desc:"孙语瞳 — 图神经网络辅助环境信息信道预测", cat:"学术论文", tag:"SCI论文" },
+   { icon:"📄", name:"Xiaogang-Diffraction_Characteristics_Aided_Blockage_and_Beam_Prediction_for_mmWave.pdf", desc:"Xiaogang — 衍射特性辅助毫米波遮挡与波束预测", cat:"学术论文", tag:"SCI论文" },
+   { icon:"📄", name:"zhenzhang-chinacom终版.pdf", desc:"张振 — chinacom会议论文", cat:"学术论文", tag:"会议论文" },
+   { icon:"📄", name:"VTM_final_article.pdf", desc:"VTM期刊论文 — 信道预测相关", cat:"学术论文", tag:"期刊论文" },
+   { icon:"📄", name:"Can_Wireless_Environment_Information_Decrease_Pilot_Overhead.pdf", desc:"环境信息能否降低导频开销？— 信道预测经典论文", cat:"学术论文", tag:"经典论文" },
+   { icon:"📄", name:"Channel Prediction for mmWave Ground-to-Air Propagation under Blockage.pdf", desc:"毫米波地空传播信道预测与遮挡", cat:"学术论文", tag:"引用论文" },
+   { icon:"📄", name:"Deep_Learning-Based_Downlink_Channel_Prediction_for_FDD_Massive_MIMO_System.pdf", desc:"深度学习FDD Massive MIMO下行信道预测", cat:"学术论文", tag:"引用论文" },
+   { icon:"📄", name:"非平稳信道的实时预测-Real-time Prediction of Non-stationary Wireless Channel.pdf", desc:"非平稳信道实时预测方法", cat:"学术论文", tag:"引用论文" },
+   { icon:"📄", name:"1905.03761.pdf", desc:"预训练信道模型 — Realistic Channel Models Pre-Training", cat:"学术论文", tag:"预印本" },
+   { icon:"📄", name:"高飞飞老师-深度迁移学习下行信道预测forFDD Massive MIMO.pdf", desc:"高飞飞 — 深度迁移学习下行信道预测", cat:"学术论文", tag:"合作论" },
+   { icon:"📄", name:"高飞飞老师-天线选择和信道外推.pdf", desc:"高飞飞 — 天线选择与信道外推方法", cat:"学术论文", tag:"合作论文" },
+   { icon:"📄", name:"借助环境信息-Deep_UL2DL_Data-Driven_Channel_Knowledge_Transfer.pdf", desc:"数据驱动的上下行信道知识迁移", cat:"学术论文", tag:"引用论文" },
+   { icon:"📄", name:"华为推荐-Computer_Vision_Aided_Codebook_Design_for_MIMO.pdf", desc:"计算机视觉辅助MIMO码本设计（华为）", cat:"学术论文", tag:"华为" },
+   { icon:"📄", name:"基于回声状态网络的自适应非线性信道预测方法研究_隋永波.caj", desc:"隋永波 — ESN自适应非线性信道预测", cat:"学术论文", tag:"CAJ格式" },
+   { icon:"📄", name:"多维域嵌入+自注意力机制-Realistic_Channel_Models_Pre-Training.pdf", desc:"多维域嵌入+自注意力 — 信道模型预训练", cat:"学术论文", tag:"预印本" },
+ 
+   // ---- 汇总与数据 ----
+   { icon:"🗂️", name:"实验室信道预测相关成果.rar", desc:"实验室信道预测相关成果汇总压缩包", cat:"汇总文件", tag:"压缩包" },
+   { icon:"🗂️", name:"空时频预测.rar", desc:"空时频预测相关论文与资料（2022版）", cat:"汇总文件", tag:"压缩包" },
+   { icon:"🗂️", name:"空时频预测 (2).rar", desc:"空时频预测补充资料", cat:"汇总文件", tag:"压缩包" },
+   { icon:"🗂️", name:"论文和一些基础知识书籍.zip", desc:"论文与基础知识书籍合集（约200MB）", cat:"汇总文件", tag:"压缩包" },
+   { icon:"📊", name:"环境信道数据集构建_slz.pptx", desc:"环境信道数据集构建方法PPT", cat:"汇总文件", tag:"PPT" },
+   { icon:"📝", name:"DTC相关文献.docx", desc:"DTC相关文献整理汇总", cat:"汇总文件", tag:"Word" },
+ 
+   // ---- 书籍与教程 ----
+   { icon:"📚", name:"无线通信 中文版 杨鸿文等译.pdf", desc:"无线通信经典教材 中文译本", cat:"书籍教程", tag:"教材" },
+   { icon:"📚", name:"无线通信原理与应用（第二版·中文版）.pdf", desc:"无线通信原理与应用 第二版 中文全本", cat:"书籍教程", tag:"教材" },
+   { icon:"📚", name:"无线通信基础 david tse 中文版.pdf", desc:"David Tse 无线通信基础 中文版", cat:"书籍教程", tag:"教材" },
+   { icon:"🔧", name:"Wireless Insite 3.3 简体中文教程完整版.pdf", desc:"Wireless Insite 3.3 射线追踪仿真教程", cat:"书籍教程", tag:"教程" },
+ ];
+ 
+ // ============================================================
+ // 渲染函数
+ // ============================================================
+ function getFileIcon(name) {
+   const ext = name.split('.').pop().toLowerCase();
+   const map = {pdf:'📄',doc:'📝',docx:'📝',ppt:'📊',pptx:'📊',rar:'🗂️',zip:'🗂️',caj:'📄',xlsx:'📊',txt:'📄'};
+   return map[ext]||'📄';
+ }
+ 
+ function getTagClass(tag) {
+   if(!tag) return '';
+   const map = {教材:'book',教程:'book','核心论文':'thesis','博士论文':'thesis','SCI论文':'thesis','实验室成果':'thesis','压缩包':'archive','PPT':'archive','Word':'archive'};
+   return map[tag]||'';
+ }
+ 
+ // 生成下载链接
+ function getDownloadLink(file) {
+   if(file.link) return file.link; // 自定义链接
+   if(STORAGE_MODE === "github") {
+     return REPO_URL + encodeURIComponent(file.name);
+   } else {
+     return file.panLink || BAIDU_PREFIX + "?pwd=" + (file.panPwd || PAN_PWD);
+   }
+ }
+ 
+ function renderFiles() {
+   const cats = {};
+   files.forEach(f => {
+     if(!cats[f.cat]) cats[f.cat] = [];
+     cats[f.cat].push(f);
+   });
+   const container = document.getElementById('fileList');
+   container.innerHTML = '';
+   const catOrder = ['学术论文','汇总文件','书籍教程'];
+   catOrder.forEach(cat => {
+     if(!cats[cat]) return;
+     const section = document.createElement('div');
+     section.innerHTML = `<div class="cat-title">${cat}（${cats[cat].length}项）</div><div class="file-grid" data-cat="${cat}">`;
+     cats[cat].forEach(f => {
+       const dl = getDownloadLink(f);
+       const ext = f.name.split('.').pop();
+       const sizeNote = ['rar','zip'].includes(ext)?' 较大文件，建议右键另存':'';
+       section.innerHTML += `
+         <div class="file-card" data-name="${f.name.toLowerCase()}">
+           <div class="file-icon">${f.icon||getFileIcon(f.name)}</div>
+           <div class="file-info">
+             <div class="file-name" title="${f.name}">${f.name}</div>
+             <div class="file-desc">${f.desc||''}</div>
+             <div>
+               ${f.tag?`<span class="file-tag ${getTagClass(f.tag)}">${f.tag}</span>`:''}
+               <span class="file-tag" style="background:#f5f5f5;color:#666">.${ext}</span>
+             </div>
+             <div class="file-actions">
+               <a class="btn-dl" href="${dl}" target="_blank" download>⬇ 下载${sizeNote}</a>
+             </div>
+           </div>
+         </div>`;
+     });
+     section.innerHTML += '</div>';
+     container.appendChild(section);
+   });
+   document.getElementById('noResult').style.display = 'none';
+ }
+ 
+ function filterFiles() {
+   const q = document.getElementById('searchInput').value.toLowerCase();
+   document.querySelectorAll('.file-card').forEach(c => {
+     const name = c.dataset.name||'';
+     c.style.display = name.includes(q)||!q?'flex':'none';
+   });
+   document.querySelectorAll('.cat-title,.file-grid').forEach(e => {
+     const visible = Array.from(e.querySelectorAll('.file-card')).some(c => c.style.display!=='none');
+     if(e.classList.contains('cat-title')) e.style.display = visible||!q?'block':'none';
+     else e.style.display = visible||!q?'block':'none';
+   });
+   const total = document.querySelectorAll('.file-card').length;
+   const vis = document.querySelectorAll('.file-card[style*="display: flex"],.file-card:not([style*="display"])').length;
+   document.getElementById('noResult').style.display = vis===0?'block':'none';
+ }
+ 
+ renderFiles();
+ </script>
+ </body>
+ </html>
